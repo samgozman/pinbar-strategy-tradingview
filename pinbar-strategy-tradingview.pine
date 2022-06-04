@@ -1,0 +1,95 @@
+//@version=5
+// 
+// Pinbar strategy script by samgozman (https://github.com/samgozman)
+// 
+// Detailed instruction how to use this script: https://github.com/samgozman/pinbar-strategy-tradingview
+// 
+// ++++++++++ Warning: The script is provided for educational purposes only. ++++++++++ //
+
+strategy('Pinbar strategy', default_qty_type=strategy.percent_of_equity, default_qty_value=100, initial_capital=10000)
+
+profitMultiplier = input.float(2.0, "Profit multiplier", minval=0.1, step=0.1, group="Profit options", tooltip="X times signal candle size (1 - recommended for 1D, 3 - recommended for 1H)")
+lossMultiplier =  input.float(1.0, "Loss multiplier", minval=0.1, step=0.1, group="Profit options", tooltip="X times signal candle size (from lowest point)")
+
+isTrailingStop = input.bool(true, "Use trailing stops?", group="Trading options", tooltip="Highly recommended!")
+isLongEligible = input.bool(true, "Enter long trades?", group="Trading options")
+isShortEligible = input.bool(false, "Enter short trades?", group="Trading options")
+
+useDateFilter = input.bool(true, title="Begin Backtest at Start Date", group="Backtest Time Period")
+backtestStartDate = input.time(timestamp("1 Jan 2021"), title="Start Date", group="Backtest Time Period")
+
+// Predefined time trading zone for back testing
+inTradeWindow = not useDateFilter or time >= backtestStartDate
+
+candle = math.abs(high - low)
+body = math.abs(open - close)
+
+// HELPER FUNCTIONS //
+
+// if body is below 50% and close/open below 30%
+isBearishPinbar() =>
+    lower30 = low + candle * 0.30
+    bottomHalf1 = close < hl2
+    bottomHalf2 = open < hl2
+    lowerRegion1 = close < lower30
+    lowerRegion2 = open < lower30
+    
+    con1 = bottomHalf1 and bottomHalf2
+    con2 = lowerRegion1 and lowerRegion2
+    con3 = high > high[1]
+    
+    con1 and con2 and con3
+
+// if body is above 50% and close/open above 30%  
+isBullishPinbar() =>
+    upper30 = high - candle * 0.30
+    topHalf1 = close > hl2
+    topHalf2 = open > hl2
+    upperRegion1 = close > upper30
+    upperRegion2 = open > upper30
+    
+    con1 = topHalf1 and topHalf2
+    con2 = upperRegion1 and upperRegion2
+    con3 = low < low[1]
+    
+    con1 and con2 and con3
+
+// Calculate trading signals
+longSignal = isBullishPinbar() and isLongEligible and inTradeWindow
+shortSignal = isBearishPinbar() and isShortEligible and inTradeWindow
+
+// ENTER THE TRADE //
+if longSignal
+    strategy.entry("buy", strategy.long, when = strategy.position_size == 0)
+
+if shortSignal
+    strategy.entry("sell", strategy.short, when = strategy.position_size == 0)
+
+// CALCULATE STOPS //
+// long
+long_take_limit = strategy.position_avg_price + (candle*profitMultiplier)
+long_target_percent_profit = long_take_limit / strategy.position_avg_price - 1
+long_target_percent_loss = (long_target_percent_profit / profitMultiplier) * lossMultiplier
+long_stop_limit = low * (1 - long_target_percent_loss)
+//short
+short_take_limit = strategy.position_avg_price - (candle*profitMultiplier)
+short_target_percent_profit = strategy.position_avg_price / short_take_limit - 1
+short_target_percent_loss = (short_target_percent_profit / profitMultiplier) * lossMultiplier
+short_stop_limit = high * (1 + short_target_percent_loss)
+
+// EXIT THE TRADE //
+if isTrailingStop
+    strategy.exit(id="exit", from_entry="buy", trail_price = long_take_limit, stop=long_stop_limit)
+    strategy.exit(id="exit", from_entry="sell", trail_price = short_take_limit, stop=short_stop_limit)
+else
+    strategy.exit(id="exit", from_entry="buy", limit = long_take_limit, stop=long_stop_limit)
+    strategy.exit(id="exit", from_entry="sell", limit = short_take_limit, stop=short_stop_limit)
+
+// PLOT SIGNALS //
+// Plot long
+plotchar(longSignal, char='B', color=color.new(color.green, 0), size=size.tiny, location=location.belowbar)
+plotshape(longSignal, style=shape.arrowup, color=color.new(color.green, 0), size=size.large, location=location.belowbar)
+
+// Plot short
+plotchar(shortSignal, char='S', color=color.new(color.red, 0), size=size.tiny)
+plotshape(shortSignal, style=shape.arrowdown, color=color.new(color.red, 0), size=size.large, location=location.abovebar)
