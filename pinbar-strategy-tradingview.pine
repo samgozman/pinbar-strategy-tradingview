@@ -8,10 +8,11 @@
 
 strategy('Pinbar strategy', default_qty_type=strategy.percent_of_equity, default_qty_value=100, initial_capital=10000)
 
-profitMultiplier = input.float(2.0, "Profit multiplier", minval=0.1, step=0.1, group="Profit options", tooltip="X times signal candle size (1 - recommended for 1D, 3 - recommended for 1H)")
-lossMultiplier =  input.float(1.0, "Loss multiplier", minval=0.1, step=0.1, group="Profit options", tooltip="X times signal candle size (from lowest point)")
+profitMultiplier = input.float(2.0, "Profit multiplier", minval=0.1, step=0.1, group="Profit options", tooltip="X times signal candle size from high")
+lossMultiplier =  input.float(1.0, "Loss multiplier", minval=0.1, step=0.1, group="Profit options", tooltip="X times signal candle size from low")
 
 isTrailingStop = input.bool(true, "Use trailing stops?", group="Trading options", tooltip="Highly recommended!")
+isCloseOnOppositSignal = input.bool(false, "Close trade if opposit signal occures?", group="Trading options", tooltip="Close long on short signal")
 isLongEligible = input.bool(true, "Enter long trades?", group="Trading options")
 isShortEligible = input.bool(false, "Enter short trades?", group="Trading options")
 
@@ -21,13 +22,14 @@ backtestStartDate = input.time(timestamp("1 Jan 2021"), title="Start Date", grou
 // Predefined time trading zone for back testing
 inTradeWindow = not useDateFilter or time >= backtestStartDate
 
-candle = math.abs(high - low)
-body = math.abs(open - close)
-
 // HELPER FUNCTIONS //
 
+// calculate candle size for N bars back. Use 0 for current
+calcCandle(int periods) =>
+    math.abs(high[periods] - low[periods])
+
 // if body is below 50% and close/open below 30%
-isBearishPinbar() =>
+isBearishPinbar(float candle) =>
     lower30 = low + candle * 0.30
     bottomHalf1 = close < hl2
     bottomHalf2 = open < hl2
@@ -41,7 +43,7 @@ isBearishPinbar() =>
     con1 and con2 and con3
 
 // if body is above 50% and close/open above 30%  
-isBullishPinbar() =>
+isBullishPinbar(float candle) =>
     upper30 = high - candle * 0.30
     topHalf1 = close > hl2
     topHalf2 = open > hl2
@@ -53,43 +55,48 @@ isBullishPinbar() =>
     con3 = low < low[1]
     
     con1 and con2 and con3
+    
+barsSinceLastEntry() =>
+    strategy.opentrades > 0 ? bar_index - strategy.opentrades.entry_bar_index(strategy.opentrades - 1) : na
 
 // Calculate trading signals
-longSignal = isBullishPinbar() and isLongEligible and inTradeWindow
-shortSignal = isBearishPinbar() and isShortEligible and inTradeWindow
+currentCandle = calcCandle(0)
+longSignal = isBullishPinbar(currentCandle) and inTradeWindow
+shortSignal = isBearishPinbar(currentCandle) and inTradeWindow
 
 // ENTER THE TRADE //
-if longSignal
+if longSignal and isLongEligible
     strategy.entry("buy", strategy.long, when = strategy.position_size == 0)
 
-if shortSignal
+if shortSignal and isShortEligible 
     strategy.entry("sell", strategy.short, when = strategy.position_size == 0)
 
 // CALCULATE STOPS //
+barsSinceEntry = barsSinceLastEntry()
+candleFromEntry = calcCandle(barsSinceEntry)
 // long
-long_take_limit = strategy.position_avg_price + (candle*profitMultiplier)
+long_take_limit = strategy.position_avg_price + (candleFromEntry*profitMultiplier)
 long_target_percent_profit = long_take_limit / strategy.position_avg_price - 1
 long_target_percent_loss = (long_target_percent_profit / profitMultiplier) * lossMultiplier
-long_stop_limit = low * (1 - long_target_percent_loss)
+long_stop_limit = low[barsSinceEntry] * (1 - long_target_percent_loss)
 //short
-short_take_limit = strategy.position_avg_price - (candle*profitMultiplier)
+short_take_limit = strategy.position_avg_price - (candleFromEntry*profitMultiplier)
 short_target_percent_profit = strategy.position_avg_price / short_take_limit - 1
 short_target_percent_loss = (short_target_percent_profit / profitMultiplier) * lossMultiplier
-short_stop_limit = high * (1 + short_target_percent_loss)
+short_stop_limit = high[barsSinceEntry] * (1 + short_target_percent_loss)
 
 // EXIT THE TRADE //
-if isTrailingStop
-    strategy.exit(id="exit", from_entry="buy", trail_price = long_take_limit, stop=long_stop_limit)
-    strategy.exit(id="exit", from_entry="sell", trail_price = short_take_limit, stop=short_stop_limit)
-else
-    strategy.exit(id="exit", from_entry="buy", limit = long_take_limit, stop=long_stop_limit)
-    strategy.exit(id="exit", from_entry="sell", limit = short_take_limit, stop=short_stop_limit)
+if strategy.position_size > 0 or strategy.position_size < 0
+    if isTrailingStop
+        strategy.exit(id="exit", from_entry="buy", trail_price = long_take_limit, stop=long_stop_limit)
+        strategy.exit(id="exit", from_entry="sell", trail_price = short_take_limit, stop=short_stop_limit)
+    else
+        strategy.exit(id="exit", from_entry="buy", limit = long_take_limit, stop=long_stop_limit)
+        strategy.exit(id="exit", from_entry="sell", limit = short_take_limit, stop=short_stop_limit)
+    if isCloseOnOppositSignal
+        strategy.close("buy", when = shortSignal)
+        strategy.close("sell", when = longSignal)
 
 // PLOT SIGNALS //
-// Plot long
-plotchar(longSignal, char='B', color=color.new(color.green, 0), size=size.tiny, location=location.belowbar)
 plotshape(longSignal, style=shape.arrowup, color=color.new(color.green, 0), size=size.large, location=location.belowbar)
-
-// Plot short
-plotchar(shortSignal, char='S', color=color.new(color.red, 0), size=size.tiny)
 plotshape(shortSignal, style=shape.arrowdown, color=color.new(color.red, 0), size=size.large, location=location.abovebar)
