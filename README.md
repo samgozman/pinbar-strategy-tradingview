@@ -2,6 +2,8 @@
 
 (Pinescript) Pinbar trading strategy for TradingView
 
+[Link to TradingView script](https://www.tradingview.com/script/QtCWpUWb-Pinbar-trailing-stop-strategy/)
+
 ![Trade example](assets/wrk_1h.png)
 
 ## Explanation
