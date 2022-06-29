@@ -1,5 +1,7 @@
 # pinbar-strategy-tradingview
 
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/C0C1DI4VL)
+
 (Pinescript) Pinbar trading strategy for TradingView
 
 [Link to TradingView script](https://www.tradingview.com/script/QtCWpUWb-Pinbar-trailing-stop-strategy/)
