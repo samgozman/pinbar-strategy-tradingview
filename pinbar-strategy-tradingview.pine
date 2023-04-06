@@ -73,7 +73,6 @@ if longSignal and isLongEligible and strategy.position_size == 0
 if shortSignal and isShortEligible and strategy.position_size == 0
     strategy.entry("sell", strategy.short)
 
-
 // CALCULATE STOPS //
 barsSinceEntry = barsSinceLastEntry()
 candleFromEntry = calcCandle(barsSinceEntry)
@@ -103,8 +102,7 @@ if strategy.position_size != 0
         if longSignal
             strategy.close("sell")
 
-
-
 // PLOT SIGNALS //
 plotshape(longSignal, style=shape.arrowup, color=color.new(color.green, 0), size=size.large, location=location.belowbar)
+
 plotshape(shortSignal, style=shape.arrowdown, color=color.new(color.red, 0), size=size.large, location=location.abovebar)
