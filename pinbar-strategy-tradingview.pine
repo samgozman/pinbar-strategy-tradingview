@@ -8,7 +8,7 @@
 // 
 // ++++++++++ Warning: The script is provided for educational purposes only. ++++++++++ //
 
-strategy('Pinbar strategy', default_qty_type=strategy.percent_of_equity, default_qty_value=100, initial_capital=10000)
+strategy('Pinbar strategy', default_qty_type=strategy.percent_of_equity, default_qty_value=100, initial_capital=10000, overlay = true)
 
 profitMultiplier = input.float(2.0, "Profit multiplier", minval=0.1, step=0.1, group="Profit options", tooltip="X times signal candle size from high")
 lossMultiplier =  input.float(1.0, "Loss multiplier", minval=0.1, step=0.1, group="Profit options", tooltip="X times signal candle size from low")
@@ -67,11 +67,12 @@ longSignal = isBullishPinbar(currentCandle) and inTradeWindow
 shortSignal = isBearishPinbar(currentCandle) and inTradeWindow
 
 // ENTER THE TRADE //
-if longSignal and isLongEligible
-    strategy.entry("buy", strategy.long, when = strategy.position_size == 0)
+if longSignal and isLongEligible and strategy.position_size == 0
+    strategy.entry("buy", strategy.long)
 
-if shortSignal and isShortEligible 
-    strategy.entry("sell", strategy.short, when = strategy.position_size == 0)
+if shortSignal and isShortEligible and strategy.position_size == 0
+    strategy.entry("sell", strategy.short)
+
 
 // CALCULATE STOPS //
 barsSinceEntry = barsSinceLastEntry()
@@ -88,16 +89,21 @@ short_target_percent_loss = (short_target_percent_profit / profitMultiplier) * l
 short_stop_limit = high[barsSinceEntry] * (1 + short_target_percent_loss)
 
 // EXIT THE TRADE //
-if strategy.position_size > 0 or strategy.position_size < 0
+if strategy.position_size != 0
     if isTrailingStop
         strategy.exit(id="exit", from_entry="buy", trail_price = long_take_limit, stop=long_stop_limit)
         strategy.exit(id="exit", from_entry="sell", trail_price = short_take_limit, stop=short_stop_limit)
     else
         strategy.exit(id="exit", from_entry="buy", limit = long_take_limit, stop=long_stop_limit)
         strategy.exit(id="exit", from_entry="sell", limit = short_take_limit, stop=short_stop_limit)
-    if isCloseOnOppositSignal
-        strategy.close("buy", when = shortSignal)
-        strategy.close("sell", when = longSignal)
+    if isCloseOnOppositSignal and strategy.position_size > 0
+        if shortSignal
+            strategy.close("buy")
+    if isCloseOnOppositSignal and strategy.position_size < 0
+        if longSignal
+            strategy.close("sell")
+
+
 
 // PLOT SIGNALS //
 plotshape(longSignal, style=shape.arrowup, color=color.new(color.green, 0), size=size.large, location=location.belowbar)
